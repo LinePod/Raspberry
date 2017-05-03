@@ -68,7 +68,7 @@ class BtCommunication (object):
         log("###############################")
 
     def config(self):
-        os.system("/home/pi/linespace/establishConnection.sh")
+        os.system("sudo ./establishConnection.sh")
         self.server_sock.bind(("",PORT_ANY))
         self.server_sock.listen(1)
         self.port = self.server_sock.getsockname()[1]
@@ -83,10 +83,8 @@ class PrintingThread(threading.Thread):
     def __init__(self):
         super(PrintingThread, self).__init__()
 
-    def printGPGL(data, speed=2):
+    def printGPGL(self, data, speed=2):
         
-        data = open(filepath, 'r').read()
-
         #Set speed and home
         silhouette.ep_out.write('!' + speed + '\x03H\x03')
 
@@ -99,12 +97,12 @@ class PrintingThread(threading.Thread):
         #Paper out
         silhouette.ep_out.write('M0,-2000\x03')
 
-    def saveSVGToFile(svgString, uuid):
-        svgFile = open("svg/" + uuid + ".svg")
+    def saveSVGToFile(self, svgString, uuid):
+        svgFile = open("svg/" + uuid + ".svg", "w")
         svgFile.write(svgString)
         svgFile.close()
 
-    def convertSVG(uuid):
+    def convertSVG(self, uuid):
         svgPath = "svg/" + uuid + ".svg"
         out = subprocess.check_output(['linespace-svg-simplifier/build/svg_converter',svgPath])
         print out
@@ -112,11 +110,10 @@ class PrintingThread(threading.Thread):
 
     def run(self):
         while True:
-            if(len(printingQueue) != 0):
-                [uuid, svgString] = printingQueue.get()
-                self.saveSVGToFile(svgString, uuid)
-                gpglData = self.convertSVG(uuid)
-                self.printGPGL(gpglData)
+            [uuid, svgString] = printingQueue.get()
+            self.saveSVGToFile(svgString, uuid)
+            gpglData = self.convertSVG(uuid)
+            self.printGPGL(gpglData)
             time.sleep(.5)
 
 class ListenThread (threading.Thread):
@@ -129,13 +126,13 @@ class ListenThread (threading.Thread):
 
         try:
             while True:
-                numBytes = struct.unpack(">I", self.btObj.client_sock.recv(4))
-                if numBytes == 0: break
                 uuid = self.btObj.client_sock.recv(36)
+                if(len(uuid) == 0) : break
+                numBytes = struct.unpack(">I", self.btObj.client_sock.recv(4))[0]
                 svgData = self.btObj.client_sock.recv(numBytes)
                 printingQueue.put([uuid, svgData])
                 
-                log("received SVG with uuid: " + uuid + " size: " + numBytes) 
+                log("received SVG with uuid: " + uuid + " size: " + str(numBytes))
                 time.sleep(0.01)
 
         except IOError:
