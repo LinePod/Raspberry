@@ -1,5 +1,6 @@
 from bluetooth import *
 import sys, os, time, threading
+import subprocess
 from silhouette import *
 from Queue import Queue
 import time
@@ -16,7 +17,7 @@ if len(sys.argv) == 2 and sys.argv[1] == '-t':
 #lastSent = time.time()
 
 def restart():
-    log("Restarting...")
+    log("Restarting...")    
     os.system("sudo /home/pi/linespace/restart.sh")
 
 def log(content):
@@ -29,6 +30,11 @@ def saveSVGToFile(svgString, uuid):
     svgFile = open("svgs/" + uuid + ".svg")
     svgFile.write(svgString)
     svgFile.close()
+
+def convertSVG(uuid):
+    filepath = "svgs/" + uuid + ".svg"
+    out = subprocess.check_output(['linespace-svg-simplifier/build/svg_converter',filepath])
+    print out
 
 class mySilhouette (Silhouette):
     def __init__(self):
@@ -100,20 +106,20 @@ class PrintingThread(threading.Thread):
 
     def printGPGLFromUUID(uuid, speed=2):
         filepath = "gpgls/" + uuid + ".gpgl"
-
-        s = Silhouette()
-        s.connect()
-        s.ep_out.write('!' + speed + '\x03H\x03')
+        
+        #Set speed and home
+        silhouette.ep_out.write('!' + speed + '\x03H\x03')
 
         data = open(filepath, 'r').read()
 
         for i in range(0, len(data), 1024):
-            s.ep_out.write(data[i:i+1024])
+            silhouette.ep_out.write(data[i:i+1024])
             time.sleep(.5)
-            while not s.ready:
+            while not silhouette.ready:
                 time.sleep(.5)
 
-        s.ep_out.write('M0,-2000\x03')
+        #Paper out
+        silhouette.ep_out.write('M0,-2000\x03')
 
     def run(self):
         while True:
