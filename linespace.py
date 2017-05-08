@@ -11,14 +11,14 @@ import time
 
 LOGFILE_PATH = "logfile"
 APP_UUID = '00001101-0000-1000-8000-00805F9B34FB'
-TEST = True
+TEST = False
 
 if len(sys.argv) == 2 and sys.argv[1] == '-t':
     TEST = True
 
 def restart():
     log("Restarting...")    
-    os.system("sudo /home/pi/linespace/restart.sh")
+    os.system("sudo /home/osboxes/linespace_raspberry/restart.sh")
 
 def log(content):
     print(content)
@@ -80,22 +80,24 @@ class BtCommunication (object):
 
 class PrintingThread(threading.Thread):
 
-    def __init__(self):
+    def __init__(self, sendingQueue, printingQueue):
+        self.sendingQueue = sendingQueue
+        self.printingQueue = printingQueue
         super(PrintingThread, self).__init__()
 
     def printGPGL(self, data, speed=2):
         
         #Set speed and home
-        silhouette.ep_out.write('!' + speed + '\x03H\x03')
+        silhouette.write('!' + str(speed) + '\x03H\x03')
 
         for i in range(0, len(data), 1024):
-            silhouette.ep_out.write(data[i:i+1024])
+            silhouette.write(data[i:i+1024])
             time.sleep(.5)
             while not silhouette.ready:
                 time.sleep(.5)
 
         #Paper out
-        silhouette.ep_out.write('M0,-2000\x03')
+        silhouette.write('M0,-2000\x03')
 
     def saveSVGToFile(self, svgString, uuid):
         svgFile = open("svg/" + uuid + ".svg", "w")
@@ -104,22 +106,28 @@ class PrintingThread(threading.Thread):
 
     def convertSVG(self, uuid):
         svgPath = "svg/" + uuid + ".svg"
-        out = subprocess.check_output(['linespace-svg-simplifier/build/svg_converter',svgPath])
+        out = subprocess.check_output(['linespace-svg-simplifier/build2/svg_converter',svgPath])
         print out
         return out
 
     def run(self):
         while True:
-            [uuid, svgString] = printingQueue.get()
+            [uuid, svgString] = self.printingQueue.get()
             self.saveSVGToFile(svgString, uuid)
             gpglData = self.convertSVG(uuid)
-            self.printGPGL(gpglData)
+            #self.printGPGL(gpglData)
+            s = bytes(uuid.encode("utf-8"))
+            bytesToSend = struct.pack(">i",1) + struct.pack("I%ds"%(len(s),),len(s),s)
+            log("sending bytes: " + str(bytesToSend.encode("utf-8")))
+            self.sendingQueue.put(bytesToSend)
             time.sleep(.5)
+            log("alive")
 
 class ListenThread (threading.Thread):
 
-    def __init__(self, btObj):
+    def __init__(self, btObj, printingQueue):
         self.btObj = btObj
+        self.printingQueue = printingQueue
         super(ListenThread, self).__init__()
 
     def run(self):
@@ -130,7 +138,7 @@ class ListenThread (threading.Thread):
                 if(len(uuid) == 0) : break
                 numBytes = struct.unpack(">I", self.btObj.client_sock.recv(4))[0]
                 svgData = self.btObj.client_sock.recv(numBytes)
-                printingQueue.put([uuid, svgData])
+                self.printingQueue.put([uuid, svgData])
                 
                 log("received SVG with uuid: " + uuid + " size: " + str(numBytes))
                 time.sleep(0.01)
@@ -146,16 +154,17 @@ class ListenThread (threading.Thread):
 
 class SendThread(threading.Thread):
 
-    def __init__(self, btObj):
+    def __init__(self, btObj, sendingQueue):
         self.btObj = btObj
+        self.sendingQueue = sendingQueue
         super(SendThread, self).__init__()
 
     def run(self):
 
         while True:
-            toSend = sendingQueue.get()
+            toSend = self.sendingQueue.get()
             self.btObj.client_sock.send(toSend)
-            log("Send: " + toSend)
+            log("Send: " + str(toSend))
 
 class TrackingThread(threading.Thread):
     '''
@@ -171,8 +180,9 @@ class TrackingThread(threading.Thread):
             2: 'UP',
             -1: ''}
 
-    def __init__(self,btObj):
+    def __init__(self, btObj, sendingQueue):
         self.btObj=btObj
+        self.sendingQueue = sendingQueue
         super(TrackingThread,self).__init__()
         self.dev=usb.core.find(idVendor=0x1536, idProduct=0x101)
         self.interface=0
@@ -231,16 +241,18 @@ class TrackingThread(threading.Thread):
 
                 eventTypes = self.getEventType(data[4],data[13])
 
-                bytesToSend = struct.pack(">6i",x_left,y_left,x_right,y_right,eventTypes[0],eventTypes[1])
+                bytesToSend = struct.pack(">7i",0,x_left,y_left,x_right,y_right,eventTypes[0],eventTypes[1])
 
                 if (eventTypes[0] == 1 or eventTypes[0] == 2) or (eventTypes[1] == 1 or eventTypes[1] == 2):
-                    sendingQueue.put(bytesToSend)
+                    self.sendingQueue.put(bytesToSend)
+                    log("tracking send: " + str(bytesToSend))
                 else:
                     count +=1
 
                 if count > 10:
                     count = 0
-                    sendingQueue.put(bytesToSend)
+                    self.sendingQueue.put(bytesToSend)
+                    log("tracking send: " + str(bytesToSend))
 
             except usb.core.USBError as e:
                 data = None
@@ -253,10 +265,10 @@ sendingQueue = Queue()
 
 appCommunication = BtCommunication(APP_UUID)
 
-listenThread = ListenThread(appCommunication)
-sendThread = SendThread(appCommunication)
-trackingThread = TrackingThread(appCommunication)
-printingThread = PrintingThread()
+listenThread = ListenThread(appCommunication, printingQueue)
+sendThread = SendThread(appCommunication, sendingQueue)
+trackingThread = TrackingThread(appCommunication, sendingQueue)
+printingThread = PrintingThread(sendingQueue, printingQueue)
 
 log("starting")
 listenThread.start()

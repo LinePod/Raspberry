@@ -1,4 +1,4 @@
-#!usr/bin/expect -f
+#!/usr/bin/expect -f
 spawn "bluetoothctl"
 expect "#"
 send "discoverable on\r"

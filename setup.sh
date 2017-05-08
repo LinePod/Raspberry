@@ -11,6 +11,7 @@ pip install pint
 
 git clone https://github.com/boeckhoff/linespace_raspberry.git
 cd linespace_raspberry
+chmod +x restart.sh
 
 git clone https://github.com/vishnubob/silhouette.git
 cd silhouette
