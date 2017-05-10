@@ -80,7 +80,7 @@ class BtCommunication (object):
 
 class PrintingThread(threading.Thread):
 
-    def __init__(self, sendingQueue, printingQueue):
+    def __init__(self, sendingQueue, printingQueue, isPrinting):
         self.sendingQueue = sendingQueue
         self.printingQueue = printingQueue
         super(PrintingThread, self).__init__()
@@ -97,7 +97,8 @@ class PrintingThread(threading.Thread):
                 time.sleep(.5)
 
         #Paper out
-        silhouette.write('M0,-2000\x03')
+
+        silhouette.write('M0,-10000\x03')
 
     def saveSVGToFile(self, svgString, uuid):
         svgFile = open("svg/" + uuid + ".svg", "w")
@@ -115,9 +116,10 @@ class PrintingThread(threading.Thread):
             [uuid, svgString] = self.printingQueue.get()
             self.saveSVGToFile(svgString, uuid)
             gpglData = self.convertSVG(uuid)
-            #self.printGPGL(gpglData)
-            s = bytes(uuid.encode("utf-8"))
-            bytesToSend = struct.pack(">i",1) + struct.pack("I%ds"%(len(s),),len(s),s)
+            isPrinting = True
+            self.printGPGL(gpglData)
+            isPrinting = False
+            bytesToSend = struct.pack(">2i36c",1,0,*uuid)
             log("sending bytes: " + str(bytesToSend.encode("utf-8")))
             self.sendingQueue.put(bytesToSend)
             time.sleep(.5)
@@ -134,10 +136,14 @@ class ListenThread (threading.Thread):
 
         try:
             while True:
+                svgData = ''
                 uuid = self.btObj.client_sock.recv(36)
                 if(len(uuid) == 0) : break
                 numBytes = struct.unpack(">I", self.btObj.client_sock.recv(4))[0]
-                svgData = self.btObj.client_sock.recv(numBytes)
+
+                while(len(svgData) < numBytes):
+                    svgData += self.btObj.client_sock.recv(numBytes - len(svgData))
+
                 self.printingQueue.put([uuid, svgData])
                 
                 log("received SVG with uuid: " + uuid + " size: " + str(numBytes))
@@ -180,7 +186,7 @@ class TrackingThread(threading.Thread):
             2: 'UP',
             -1: ''}
 
-    def __init__(self, btObj, sendingQueue):
+    def __init__(self, btObj, sendingQueue, isPrinting):
         self.btObj=btObj
         self.sendingQueue = sendingQueue
         super(TrackingThread,self).__init__()
@@ -190,7 +196,14 @@ class TrackingThread(threading.Thread):
         print self.dev
         if self.dev.is_kernel_driver_active(self.interface) is True:
             self.dev.detach_kernel_driver(self.interface)
+
             usb.util.claim_interface(self.dev,self.interface)
+
+    def unclaimDevice(self):
+        log("releasing device")
+        usb.util.release_interface(self.dev, self.interface)
+        self.dev.reset()
+        self.dev.attach_kernel_driver(self.interface)
 
     def getEventType(self, newEvent1,newEvent2):
         event1=-1
@@ -221,8 +234,15 @@ class TrackingThread(threading.Thread):
         return [event1,event2]
 
     def run(self):
-        count=0
+
+        count = 0
         while True:
+            if isPrinting:
+                time.sleep(1)
+                continue
+            if shutdown:
+                self.unclaimDevice()
+                return
             try:
                 data=self.dev.read(0x81,0x40)
                 finger_left_x1=data[5]
@@ -245,38 +265,52 @@ class TrackingThread(threading.Thread):
 
                 if (eventTypes[0] == 1 or eventTypes[0] == 2) or (eventTypes[1] == 1 or eventTypes[1] == 2):
                     self.sendingQueue.put(bytesToSend)
-                    log("tracking send: " + str(bytesToSend))
+                    log("tracking send ")
                 else:
                     count +=1
 
                 if count > 10:
                     count = 0
                     self.sendingQueue.put(bytesToSend)
-                    log("tracking send: " + str(bytesToSend))
+                    log("tracking send ")
 
             except usb.core.USBError as e:
                 data = None
                 continue
                 count+=1
 
+try:
+    printingQueue = Queue()
+    sendingQueue = Queue()
 
-printingQueue = Queue()
-sendingQueue = Queue()
+    isPrinting = False
+    shutdown = False
 
-appCommunication = BtCommunication(APP_UUID)
+    appCommunication = BtCommunication(APP_UUID)
 
-listenThread = ListenThread(appCommunication, printingQueue)
-sendThread = SendThread(appCommunication, sendingQueue)
-trackingThread = TrackingThread(appCommunication, sendingQueue)
-printingThread = PrintingThread(sendingQueue, printingQueue)
+    listenThread = ListenThread(appCommunication, printingQueue)
+    sendThread = SendThread(appCommunication, sendingQueue)
+    trackingThread = TrackingThread(appCommunication, sendingQueue, isPrinting)
+    printingThread = PrintingThread(sendingQueue, printingQueue, isPrinting)
 
-log("starting")
-listenThread.start()
-sendThread.start()
-trackingThread.start()
-printingThread.start()
+    listenThread.deamon = True
+    sendThread.deamon = True
+    trackingThread.deamon = True
+    printingThread.deamon = True
+    
+    log("starting threads")
 
-trackingThread.join()
-listenThread.join()
-sendThread.join()
-printingThread.join()
+    listenThread.start()
+    sendThread.start()
+    trackingThread.start()
+    printingThread.start()
+    while True: time.sleep(100)
+
+except (KeyboardInterrupt, SystemExit): 
+    log("Will exit due to Ctrl+c")
+    shutdown = True 
+    try:
+        trackingThread.join()
+    except:
+        pass
+    os._exit(0)
