@@ -1,27 +1,24 @@
+#!/bin/bash
+
+# This script is supposed to be run on a clean machine and will handle all
+# setup. The first argument needs to be the path to a directory with the
+# needed ssh keys to clone all repositories. They should be copied onto the
+# machine and been given the correct permissions so that ssh won't complain
+# (for example `chmod -R 600 /keys`). The folder will be deleted by this
+# script after setup.
+
+# Use the SSH key for all git commands
+export SSH_KEY_DIR="$1"
+
 apt-get update -y
-apt-get install python-pip -y
-apt-get install python-dev -y
-apt-get install libbluetooth-dev -y
-apt-get install git -y
-apt-get install expect -y
+apt-get install -y git
 
-pip install pybluez
-pip install pyusb
-pip install pint
+# Add ssh identity of github.com
+mkdir -p ~/.ssh
+touch ~/.ssh/known_hosts
+ssh-keyscan github.com >> ~/.ssh/known_hosts
 
-git clone https://github.com/boeckhoff/linespace_raspberry.git
-cd linespace_raspberry
-chmod +x restart.sh
-
-git clone https://github.com/vishnubob/silhouette.git
-cd silhouette
-python setup.py install
-cd ..
-
-apt-get install libboost-dev libeigen3-dev libxml2-dev cmake -y
-git clone --recursive https://github.com/Felerius/linespace-svg-simplifier.git
-cd linespace-svg-simplifier
-mkdir build
-cd build
-cmake -DCMAKE_BUILD_TYPE=Release ..
-make svg_converter
+GIT_SSH_COMMAND="ssh -i $SSH_KEY_DIR/linespace-raspberry" git clone --depth=1 git@github.com:boeckhoff/linespace_raspberry.git ~/linespace
+cd ~/linespace
+setup/setup.sh
+rm -r "$SSH_KEY_DIR"

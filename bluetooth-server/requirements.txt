@@ -1,0 +1,3 @@
+Pint==0.8
+PyBluez==0.22
+pyusb==1.0.0

@@ -1,13 +1,14 @@
-from bluetooth import *
-import sys, os, time, threading
+import os
+import struct
 import subprocess
-from silhouette import *
-from Queue import Queue
+import sys
 import time
+import threading
 import usb.core
 import usb.util
-import struct
-import time
+from silhouette import *
+from bluetooth import *
+from Queue import Queue
 
 LOGFILE_PATH = "logfile"
 APP_UUID = '00001101-0000-1000-8000-00805F9B34FB'
@@ -17,8 +18,8 @@ if len(sys.argv) == 2 and sys.argv[1] == '-t':
     TEST = True
 
 def restart():
-    log("Restarting...")    
-    os.system("sudo /home/osboxes/linespace_raspberry/restart.sh")
+   log("Restarting...")
+    os.system("sudo ~/linespace/bluetooth-server/restart.sh")
 
 def log(content):
     print(content)
@@ -86,7 +87,7 @@ class PrintingThread(threading.Thread):
         super(PrintingThread, self).__init__()
 
     def printGPGL(self, data, speed=2):
-        
+
         #Set speed and home
         silhouette.write('!' + str(speed) + '\x03H\x03')
 
@@ -140,12 +141,11 @@ class ListenThread (threading.Thread):
                 uuid = self.btObj.client_sock.recv(36)
                 if(len(uuid) == 0) : break
                 numBytes = struct.unpack(">I", self.btObj.client_sock.recv(4))[0]
-
                 while(len(svgData) < numBytes):
                     svgData += self.btObj.client_sock.recv(numBytes - len(svgData))
 
                 self.printingQueue.put([uuid, svgData])
-                
+
                 log("received SVG with uuid: " + uuid + " size: " + str(numBytes))
                 time.sleep(0.01)
 
