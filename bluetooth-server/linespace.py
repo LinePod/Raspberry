@@ -19,7 +19,7 @@ if len(sys.argv) == 2 and sys.argv[1] == '-t':
     TEST = True
 
 def restart():
-   log("Restarting...")
+    log("Restarting...")
     os.system("sudo ~/linespace/bluetooth-server/restart.sh")
 
 def log(content):
@@ -37,7 +37,6 @@ class mySilhouette (Silhouette):
             try:
                 self.connect()
                 self.init()
-                self.write("!3\x03")
             except:
                 log("Cannot connect to plotter")
                 time.sleep(1)
@@ -295,11 +294,11 @@ try:
     trackingThread = TrackingThread(appCommunication, sendingQueue, isPrinting)
     printingThread = PrintingThread(sendingQueue, printingQueue, isPrinting)
 
-    listenThread.deamon = True
-    sendThread.deamon = True
-    trackingThread.deamon = True
-    printingThread.deamon = True
-    
+    listenThread.daemon = True
+    sendThread.daemon = True
+    trackingThread.daemon = True
+    printingThread.daemon = True
+
     log("starting threads")
 
     listenThread.start()
@@ -308,9 +307,9 @@ try:
     printingThread.start()
     while True: time.sleep(100)
 
-except (KeyboardInterrupt, SystemExit): 
+except (KeyboardInterrupt, SystemExit):
     log("Will exit due to Ctrl+c")
-    shutdown = True 
+    shutdown = True
     try:
         trackingThread.join()
     except:
