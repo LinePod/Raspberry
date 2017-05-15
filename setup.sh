@@ -29,4 +29,7 @@ ssh-keyscan github.com >> ~/.ssh/known_hosts
 GIT_SSH_COMMAND="ssh -i $SSH_KEY_DIR/linespace-raspberry" git clone --depth=1 git@github.com:boeckhoff/linespace_raspberry.git ~/linespace
 cd ~/linespace
 setup/setup.sh
+
+# Cleanup and reboot
 rm -r "$SSH_KEY_DIR"
+reboot now
