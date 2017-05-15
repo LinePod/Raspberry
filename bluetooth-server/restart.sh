@@ -1,3 +1,3 @@
 #!/bin/bash
-sudo killall python
-sudo python linespace.py &
+killall python
+python linespace.py &

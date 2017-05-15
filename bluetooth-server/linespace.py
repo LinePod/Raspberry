@@ -20,7 +20,7 @@ if len(sys.argv) == 2 and sys.argv[1] == '-t':
 
 def restart():
     log("Restarting...")
-    os.system("sudo ~/linespace/bluetooth-server/restart.sh")
+    os.system("~/linespace/bluetooth-server/restart.sh")
 
 def log(content):
     print(content)
@@ -69,7 +69,7 @@ class BtCommunication (object):
         log("###############################")
 
     def config(self):
-        os.system("sudo ./establishConnection.sh")
+        os.system("./establishConnection.sh")
         self.server_sock.bind(("",PORT_ANY))
         self.server_sock.listen(1)
         self.port = self.server_sock.getsockname()[1]
