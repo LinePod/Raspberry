@@ -10,7 +10,7 @@ cd silhouette
 python setup.py install
 
 # Fix bluetooth (https://www.raspberrypi.org/forums/viewtopic.php?f=63&t=133263)
-sed -i 's:\(ExecStart=.*\):\1:' /etc/systemd/system/dbus-org.bluez.service
+sed -i 's:\(ExecStart=.*\):\1 -C:' /etc/systemd/system/dbus-org.bluez.service
 sdptool add SP
 
 cd ../..
