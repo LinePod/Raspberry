@@ -11,8 +11,15 @@ export SSH_KEY_DIR=$(mktemp -d)
 cp -R "${1}/." $SSH_KEY_DIR
 chmod -R 600 $SSH_KEY_DIR
 
-apt-get update -y
-apt-get install -y git
+# Upgrade to debian stretch
+# We upgrade here to have a git >= 2.3.0, so we can use GIT_SSH_COMMAND.
+sed -i 's/jessie/stretch/g' /etc/apt/sources.list
+apt-get -y update
+apt-get -y upgrade
+apt-get -y dist-upgrade
+
+# Install git
+apt-get -y install git
 
 # Add ssh identity of github.com
 mkdir -p ~/.ssh
