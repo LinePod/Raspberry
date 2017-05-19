@@ -119,7 +119,7 @@ class PrintingThread(threading.Thread):
             self.saveSVGToFile(svgString, uuid)
             gpglData = self.convertSVG(uuid)
             isPrinting = True
-            self.printGPGL(gpglData)
+            status = self.printGPGL(gpglData)
             isPrinting = False
             bytesToSend = struct.pack(">2i36c",1,0,*uuid)
             log("sending bytes: " + str(bytesToSend.encode("utf-8")))
