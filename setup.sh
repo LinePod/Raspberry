@@ -11,6 +11,11 @@ export SSH_KEY_DIR=$(mktemp -d)
 cp -R "${1}/." $SSH_KEY_DIR
 chmod -R 600 $SSH_KEY_DIR
 
+# Check whether we are on a pi or in a virtual machine
+if [[ "$(uname -m)" == "arm*" ]]; then
+    export IS_PI='true'
+fi
+
 # Upgrade to debian stretch
 # We upgrade here to have a git >= 2.3.0, so we can use GIT_SSH_COMMAND.
 sed -i 's/jessie/stretch/g' /etc/apt/sources.list
