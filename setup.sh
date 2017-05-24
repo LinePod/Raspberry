@@ -18,10 +18,14 @@ fi
 
 # Upgrade to debian stretch
 # We upgrade here to have a git >= 2.3.0, so we can use GIT_SSH_COMMAND.
+# See https://serverfault.com/questions/48724/100-non-interactive-debian-dist-upgrade
+# for how to do a noninteractive dist-upgrade
+export DEBIAN_FRONTEND=noninteractive
+export APT_LISTCHANGES_FRONTEND=none
 sed -i 's/jessie/stretch/g' /etc/apt/sources.list
 apt-get -y update
-apt-get -y upgrade
-apt-get -y dist-upgrade
+apt-get -fy -o Dpkg::Options::="--force-confnew" --force-yes upgrade
+apt-get -fy -o Dpkg::Options::="--force-confnew" --force-yes dist-upgrade
 
 # Install git
 apt-get -y install git
