@@ -16,4 +16,8 @@ python setup.py install
 cp /lib/systemd/system/bluetooth.service /etc/systemd/system/bluetooth.service
 sed -i "s:\(ExecStart=.*\):\1 --compat\nExecStartPost=$(which sdptool) add SP:" /etc/systemd/system/bluetooth.service
 
+# Create new systemd service for the bluetooth server
 cd ../..
+
+cp setup/units/linespace.bluetooth-server.template.service /etc/systemd/system/linespace.bluetooth-server.service
+sed -i "s:__INSTALL_ROOT__:$(pwd):" /etc/systemd/system/linespace.bluetooth-server.service
