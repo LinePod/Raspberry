@@ -19,29 +19,17 @@ TEST = False
 if len(sys.argv) == 2 and sys.argv[1] == '-t':
     TEST = True
 
-def restart():
-    log("Restarting...")
-    os.system("~/linespace/bluetooth-server/restart.sh")
-
 def log(content):
     print(content)
-    with open(LOGFILE_PATH,"a+") as output_file:
-        output_file.write(time.strftime('%m.%d.%y %H:%M:%S:')+ ' {0}\n'.format(content))
-        output_file.close()
+    with open(LOGFILE_PATH, "a+") as output_file:
+        output_file.write(time.strftime('%m.%d.%y %H:%M:%S:') + ' {0}\n'.format(content))
 
-class mySilhouette (Silhouette):
-    def __init__(self):
-        super(mySilhouette, self).__init__()
-
-    def config(self):
-        if not TEST:
-            try:
-                self.connect()
-                self.init()
-            except:
-                log("Cannot connect to plotter")
-                time.sleep(1)
-                restart()
+class MySilhouette (Silhouette):
+    def __init__(self, testing):
+        super(MySilhouette, self).__init__()
+        if not testing:
+            self.connect()
+            self.init()
 
     def write(self, command):
         if not TEST:
@@ -50,11 +38,7 @@ class mySilhouette (Silhouette):
         else:
             log("Would send to plotter: " + command)
 
-silhouette = mySilhouette()
-silhouette.config()
-
 class BtCommunication (object):
-
     def __init__(self, uuid):
         self.server_sock = BluetoothSocket(RFCOMM)
         self.uuid = uuid
@@ -81,14 +65,14 @@ class BtCommunication (object):
                 profiles = [ SERIAL_PORT_PROFILE ],)
 
 class PrintingThread(threading.Thread):
-
-    def __init__(self, sendingQueue, printingQueue, isPrinting):
+    def __init__(self, sendingQueue, printingQueue, shutdown):
+        super(PrintingThread, self).__init__(name='Printing thread')
+        self.daemon = True
         self.sendingQueue = sendingQueue
         self.printingQueue = printingQueue
-        super(PrintingThread, self).__init__()
+        self.shutdown = shutdown
 
     def printGPGL(self, data, speed=2):
-
         #Set speed and home
         silhouette.write('!' + str(speed) + '\x03H\x03')
 
@@ -99,23 +83,21 @@ class PrintingThread(threading.Thread):
                 time.sleep(.5)
 
         #Paper out
-
         silhouette.write('M0,-10000\x03')
 
     def saveSVGToFile(self, svgString, uuid):
-        svgFile = open("svg/" + uuid + ".svg", "w")
-        svgFile.write(svgString)
-        svgFile.close()
+        with open("svg/" + uuid + ".svg", "w") as svgFile:
+            svgFile.write(svgString)
 
     def convertSVG(self, uuid):
         svgPath = "svg/" + uuid + ".svg"
         converter_path = os.path.expanduser('~/linespace/svg-simplifier/build/svg_converter')
         out = subprocess.check_output([converter_path, svgPath])
-        print out
+        print(out)
         return out
 
     def run(self):
-        while True:
+        while not self.shutdown.is_set():
             [uuid, svgString] = self.printingQueue.get()
             self.saveSVGToFile(svgString, uuid)
             gpglData = self.convertSVG(uuid)
@@ -129,19 +111,20 @@ class PrintingThread(threading.Thread):
             log("alive")
 
 class ListenThread (threading.Thread):
-
-    def __init__(self, btObj, printingQueue):
+    def __init__(self, btObj, printingQueue, shutdown):
+        super(ListenThread, self).__init__(name='Listen thread')
+        self.daemon = True
         self.btObj = btObj
         self.printingQueue = printingQueue
-        super(ListenThread, self).__init__()
+        self.shutdown = shutdown
 
     def run(self):
-
         try:
-            while True:
+            while not self.shutdown.is_set():
                 svgData = ''
                 uuid = self.btObj.client_sock.recv(36)
-                if(len(uuid) == 0) : break
+                if(len(uuid) == 0):
+                    break
                 numBytes = struct.unpack(">I", self.btObj.client_sock.recv(4))[0]
                 while(len(svgData) < numBytes):
                     svgData += self.btObj.client_sock.recv(numBytes - len(svgData))
@@ -150,29 +133,31 @@ class ListenThread (threading.Thread):
 
                 log("received SVG with uuid: " + uuid + " size: " + str(numBytes))
                 time.sleep(0.01)
-
         except IOError:
             pass
 
+        self.shutdown.set()
         log("disconnected")
-
         self.btObj.client_sock.close()
         self.btObj.server_sock.close()
-        return
 
 class SendThread(threading.Thread):
-
-    def __init__(self, btObj, sendingQueue):
+    def __init__(self, btObj, sendingQueue, shutdown):
+        super(SendThread, self).__init__(name='Send thread')
+        self.daemon = True
         self.btObj = btObj
         self.sendingQueue = sendingQueue
-        super(SendThread, self).__init__()
+        self.shutdown = shutdown
 
     def run(self):
-
-        while True:
-            toSend = self.sendingQueue.get()
-            self.btObj.client_sock.send(toSend)
-            log("Send: " + str(toSend))
+        try:
+            while not self.shutdown.is_set():
+                toSend = self.sendingQueue.get()
+                self.btObj.client_sock.send(toSend)
+                log("Send: " + str(toSend))
+        except IOError:
+            log("IO error while sending to bluetooth connection")
+        self.shutdown.set()
 
 class TrackingThread(threading.Thread):
     '''
@@ -183,29 +168,23 @@ class TrackingThread(threading.Thread):
     lastEvent2 = -1
 
     eventTypeDict = {
-            0: 'MOVE',
-            1: 'DOWN',
-            2: 'UP',
-            -1: ''}
+        0: 'MOVE',
+        1: 'DOWN',
+        2: 'UP',
+        -1: ''
+    }
 
-    def __init__(self, btObj, sendingQueue, isPrinting):
+    def __init__(self, btObj, sendingQueue, shutdown):
+        super(TrackingThread, self).__init__(name='Tracking thread')
+        self.daemon = True
         self.btObj=btObj
         self.sendingQueue = sendingQueue
-        super(TrackingThread,self).__init__()
-        self.dev=usb.core.find(idVendor=0x1536, idProduct=0x101)
-        self.interface=0
-        #self.endpoint=self.dev[0](0,0)[0]
-        print self.dev
-        if self.dev.is_kernel_driver_active(self.interface) is True:
-            self.dev.detach_kernel_driver(self.interface)
 
-            usb.util.claim_interface(self.dev,self.interface)
-
-    def unclaimDevice(self):
+    def unclaimDevice(self, dev, interface):
         log("releasing device")
-        usb.util.release_interface(self.dev, self.interface)
-        self.dev.reset()
-        self.dev.attach_kernel_driver(self.interface)
+        usb.util.release_interface(dev, interface)
+        dev.reset()
+        dev.attach_kernel_driver(interface)
 
     def getEventType(self, newEvent1,newEvent2):
         event1=-1
@@ -236,83 +215,89 @@ class TrackingThread(threading.Thread):
         return [event1,event2]
 
     def run(self):
+        dev = usb.core.find(idVendor=0x1536, idProduct=0x101)
+        interface = 0
+        if dev.is_kernel_driver_active(interface) is True:
+            dev.detach_kernel_driver(interface)
+            usb.util.claim_interface(dev, interface)
 
         count = 0
-        while True:
-            if isPrinting:
-                time.sleep(1)
-                continue
-            if shutdown:
-                self.unclaimDevice()
-                return
-            try:
-                data=self.dev.read(0x81,0x40)
-                finger_left_x1=data[5]
-                finger_left_x2=data[6]
-                finger_left_y1=data[7]
-                finger_left_y2=data[8]
-                x_left=finger_left_x2*256+finger_left_x1
-                y_left=finger_left_y2*256+finger_left_y1
+        try:
+            while not self.shutdown.is_set():
+                if isPrinting:
+                    time.sleep(1)
+                    continue
+                data = dev.read(0x81, 0x40)
+                finger_left_x1 = data[5]
+                finger_left_x2 = data[6]
+                finger_left_y1 = data[7]
+                finger_left_y2 = data[8]
+                x_left = finger_left_x2 * 256 + finger_left_x1
+                y_left = finger_left_y2 * 256 + finger_left_y1
 
-                finger_right_x1=data[14]
-                finger_right_x2=data[15]
-                finger_right_y1=data[16]
-                finger_right_y2=data[17]
-                x_right=finger_right_x2*256+finger_right_x1
-                y_right=finger_right_y2*256+finger_right_y1
+                finger_right_x1 = data[14]
+                finger_right_x2 = data[15]
+                finger_right_y1 = data[16]
+                finger_right_y2 = data[17]
+                x_right = finger_right_x2 * 256 + finger_right_x1
+                y_right = finger_right_y2 * 256 + finger_right_y1
 
                 eventTypes = self.getEventType(data[4],data[13])
 
-                bytesToSend = struct.pack(">7i",0,x_left,y_left,x_right,y_right,eventTypes[0],eventTypes[1])
+                bytesToSend = struct.pack(">7i", 0, x_left, y_left, x_right, y_right, eventTypes[0], eventTypes[1])
 
                 if (eventTypes[0] == 1 or eventTypes[0] == 2) or (eventTypes[1] == 1 or eventTypes[1] == 2):
                     self.sendingQueue.put(bytesToSend)
                     log("tracking send ")
                 else:
-                    count +=1
+                    count += 1
 
                 if count > 10:
                     count = 0
                     self.sendingQueue.put(bytesToSend)
-                    log("tracking send ")
+                    log("tracking send")
 
-            except usb.core.USBError as e:
-                data = None
-                continue
-                count+=1
+        except usb.core.USBError as e:
+            log("USB error: " + str(e))
+            self.shutdown.set()
+        finally:
+            self.unclaimDevice(dev, interface)
 
 try:
-    printingQueue = Queue()
-    sendingQueue = Queue()
+    silhouette = MySilhouette(TEST)
+except Exception, e:
+    log("Cannot connect to plotter: " + str(e))
+    sys.exit(1)
 
-    isPrinting = False
-    shutdown = False
+printingQueue = Queue()
+sendingQueue = Queue()
+shutdown = threading.Event()
 
-    appCommunication = BtCommunication(APP_UUID)
+isPrinting = False
 
-    listenThread = ListenThread(appCommunication, printingQueue)
-    sendThread = SendThread(appCommunication, sendingQueue)
-    trackingThread = TrackingThread(appCommunication, sendingQueue, isPrinting)
-    printingThread = PrintingThread(sendingQueue, printingQueue, isPrinting)
+appCommunication = BtCommunication(APP_UUID)
 
-    listenThread.daemon = True
-    sendThread.daemon = True
-    trackingThread.daemon = True
-    printingThread.daemon = True
-
+threads = (ListenThread(appCommunication, shutdown),
+           SendThread(appCommunication, sendingQueue, shutdown),
+           TrackingThread(appCommunication, sendingQueue, shutdown),
+           PrintingThread(sendingQueue, printingQueue, shutdown))
+try:
     log("starting threads")
 
-    listenThread.start()
-    sendThread.start()
-    trackingThread.start()
-    printingThread.start()
-    while True: time.sleep(100)
+    for t in threads:
+        t.start()
 
-except (KeyboardInterrupt, SystemExit):
-    log("Will exit due to Ctrl+c")
-    shutdown = True
-    try:
-        trackingThread.join()
-    except:
-        pass
-    os._exit(0)
+    shutdown.wait()
+except KeyboardInterrupt:
+    pass
+except Exception, e:
+    log("Caught error in main thread: " + str(e))
+finally:
+    log('Trying to exit threads gracefully...')
+    shutdown.set()
+    for t in threads:
+        t.join(1)
+    for t in threads:
+        if t.is_alive():
+            log(t.name + ' did not exit gracefully')
+    log('Exiting')
