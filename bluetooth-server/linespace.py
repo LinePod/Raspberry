@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import logging
 import os
 import os.path
 import struct
@@ -12,17 +13,11 @@ from silhouette import *
 from bluetooth import *
 from Queue import Queue
 
-LOGFILE_PATH = "logfile"
 APP_UUID = '00001101-0000-1000-8000-00805F9B34FB'
 TEST = False
 
 if len(sys.argv) == 2 and sys.argv[1] == '-t':
     TEST = True
-
-def log(content):
-    print(content)
-    with open(LOGFILE_PATH, "a+") as output_file:
-        output_file.write(time.strftime('%m.%d.%y %H:%M:%S:') + ' {0}\n'.format(content))
 
 class MySilhouette (Silhouette):
     def __init__(self, testing):
@@ -33,10 +28,10 @@ class MySilhouette (Silhouette):
 
     def write(self, command):
         if not TEST:
-            log("Sending to Plotter: " + command)
+            logging.debug("Sending to Plotter: %s", repr(command))
             super(mySilhouette, self).write(command)
         else:
-            log("Would send to plotter: " + command)
+            logging.debug("Would send to plotter: %s", repr(command))
 
 class BtCommunication (object):
     def __init__(self, uuid):
@@ -46,16 +41,13 @@ class BtCommunication (object):
         self.establishConnection()
 
     def establishConnection(self):
-        log("Waiting for connection on RFCOMM channel " + str(self.port))
+        logging.info("Waiting for connection on RFCOMM channel %s", self.port)
         self.client_sock, self.client_info = self.server_sock.accept()
-        log("Accepted connection from " + str(self.client_info))
-        log("###############################")
-        log("App is connected")
-        log("###############################")
+        logging.info("Accepted connection from %s", self.client_info)
 
     def config(self):
         os.system("./establishConnection.sh")
-        self.server_sock.bind(("",PORT_ANY))
+        self.server_sock.bind(("", PORT_ANY))
         self.server_sock.listen(1)
         self.port = self.server_sock.getsockname()[1]
 
@@ -77,7 +69,7 @@ class PrintingThread(threading.Thread):
         silhouette.write('!' + str(speed) + '\x03H\x03')
 
         for i in range(0, len(data), 1024):
-            silhouette.write(data[i:i+1024])
+            silhouette.write(data[i:i + 1024])
             time.sleep(.5)
             while not silhouette.ready:
                 time.sleep(.5)
@@ -93,7 +85,6 @@ class PrintingThread(threading.Thread):
         svgPath = "svg/" + uuid + ".svg"
         converter_path = os.path.expanduser('~/linespace/svg-simplifier/build/svg_converter')
         out = subprocess.check_output([converter_path, svgPath])
-        print(out)
         return out
 
     def run(self):
@@ -105,10 +96,8 @@ class PrintingThread(threading.Thread):
             status = self.printGPGL(gpglData)
             isPrinting = False
             bytesToSend = struct.pack(">2i36c",1,0,*uuid)
-            log("sending bytes: " + str(bytesToSend.encode("utf-8")))
             self.sendingQueue.put(bytesToSend)
             time.sleep(.5)
-            log("alive")
 
 class ListenThread (threading.Thread):
     def __init__(self, btObj, printingQueue, shutdown):
@@ -131,13 +120,13 @@ class ListenThread (threading.Thread):
 
                 self.printingQueue.put([uuid, svgData])
 
-                log("received SVG with uuid: " + uuid + " size: " + str(numBytes))
+                logging.info("Received SVG with uuid: %s, size %d", uuid, numBytes)
                 time.sleep(0.01)
         except IOError:
             pass
 
         self.shutdown.set()
-        log("disconnected")
+        logging.info("Bluetooth disconnected")
         self.btObj.client_sock.close()
         self.btObj.server_sock.close()
 
@@ -154,9 +143,9 @@ class SendThread(threading.Thread):
             while not self.shutdown.is_set():
                 toSend = self.sendingQueue.get()
                 self.btObj.client_sock.send(toSend)
-                log("Send: " + str(toSend))
+                logging.debug("Sending %s", toSend)
         except IOError:
-            log("IO error while sending to bluetooth connection")
+            logging.exception("Error while sending to bluetooth connection")
         self.shutdown.set()
 
 class TrackingThread(threading.Thread):
@@ -181,7 +170,7 @@ class TrackingThread(threading.Thread):
         self.sendingQueue = sendingQueue
 
     def unclaimDevice(self, dev, interface):
-        log("releasing device")
+        logging.info("Releasing airbar usb device")
         usb.util.release_interface(dev, interface)
         dev.reset()
         dev.attach_kernel_driver(interface)
@@ -211,7 +200,6 @@ class TrackingThread(threading.Thread):
 
         self.lastEvent1=newEvent1
         self.lastEvent2=newEvent2
-        print self.eventTypeDict[event1]+":"+str(diff1)  + "  \t" + self.eventTypeDict[event2] +":"+str(diff2)
         return [event1,event2]
 
     def run(self):
@@ -248,25 +236,30 @@ class TrackingThread(threading.Thread):
 
                 if (eventTypes[0] == 1 or eventTypes[0] == 2) or (eventTypes[1] == 1 or eventTypes[1] == 2):
                     self.sendingQueue.put(bytesToSend)
-                    log("tracking send ")
+                    logging.debug("Sending tracking info")
                 else:
                     count += 1
 
                 if count > 10:
                     count = 0
                     self.sendingQueue.put(bytesToSend)
-                    log("tracking send")
+                    logging.debug("Sending tracking info")
 
-        except usb.core.USBError as e:
-            log("USB error: " + str(e))
+        except usb.core.USBError:
+            logging.exception("USB error")
             self.shutdown.set()
         finally:
             self.unclaimDevice(dev, interface)
 
+logging.basicConfig(
+        level=logging.DEBUG,
+        format='[%(levelname)s] %(threadName)s: %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S')
+
 try:
     silhouette = MySilhouette(TEST)
-except Exception, e:
-    log("Cannot connect to plotter: " + str(e))
+except:
+    logging.exception('Cannot connect to plotter')
     sys.exit(1)
 
 printingQueue = Queue()
@@ -282,22 +275,22 @@ threads = (ListenThread(appCommunication, shutdown),
            TrackingThread(appCommunication, sendingQueue, shutdown),
            PrintingThread(sendingQueue, printingQueue, shutdown))
 try:
-    log("starting threads")
+    logging.info('starting threads')
 
     for t in threads:
         t.start()
 
     shutdown.wait()
 except KeyboardInterrupt:
-    pass
-except Exception, e:
-    log("Caught error in main thread: " + str(e))
+    logging.info('Exiting due to ctrl-c')
+except:
+    logging.exception('Caught error in main thread')
 finally:
-    log('Trying to exit threads gracefully...')
+    logging.info('Trying to exit threads gracefully...')
     shutdown.set()
     for t in threads:
         t.join(1)
     for t in threads:
         if t.is_alive():
-            log(t.name + ' did not exit gracefully')
-    log('Exiting')
+            logging.warn(t.name + ' did not exit gracefully')
+    logging.info('Exiting')
