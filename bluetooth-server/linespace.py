@@ -66,7 +66,7 @@ class PrintingThread(threading.Thread):
         self.printingQueue = printingQueue
         self.shutdown = shutdown
 
-    def printGPGL(self, data, speed=2):
+    def printGPGL(self, data, speed=1):
         #Set speed and home
         silhouette.write('!' + str(speed) + '\x03H\x03')
 
