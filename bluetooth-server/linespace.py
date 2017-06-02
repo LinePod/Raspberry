@@ -3,6 +3,7 @@ import logging
 import os
 import os.path
 import select
+import socket
 import struct
 import subprocess
 import sys
@@ -58,6 +59,15 @@ class BtCommunication (object):
                 service_id = self.uuid,
                 service_classes = [ self.uuid, SERIAL_PORT_CLASS ],
                 profiles = [ SERIAL_PORT_PROFILE ],)
+
+class TcpCommunication(object):
+    def __init__(self, port):
+        self.server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_sock.bind(('0.0.0.0', port))
+        self.server_sock.listen(1)
+        logging.info('Waiting for TCP connections on port %d', port)
+        self.client_sock, client_addr = self.server_sock.accept()
+        logging.info('Accepted connection from %s', client_addr)
 
 class PrintingThread(threading.Thread):
     def __init__(self, sendingQueue, printingQueue, shutdown):
@@ -286,7 +296,8 @@ shutdown = threading.Event()
 isPrinting = False
 
 try:
-    appCommunication = BtCommunication(APP_UUID)
+    #appCommunication = BtCommunication(APP_UUID)
+    appCommunication = TcpCommunication(3000)
 
     threads = (ListenThread(appCommunication, printingQueue, shutdown),
                SendThread(appCommunication, sendingQueue, shutdown),
