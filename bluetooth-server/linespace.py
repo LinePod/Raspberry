@@ -2,6 +2,7 @@
 import logging
 import os
 import os.path
+import select
 import struct
 import subprocess
 import sys
@@ -11,7 +12,7 @@ import usb.core
 import usb.util
 from silhouette import *
 from bluetooth import *
-from Queue import Queue
+import Queue
 
 APP_UUID = '00001101-0000-1000-8000-00805F9B34FB'
 TEST = False
@@ -90,16 +91,23 @@ class PrintingThread(threading.Thread):
         return out
 
     def run(self):
-        while not self.shutdown.is_set():
-            [uuid, svgString] = self.printingQueue.get()
-            self.saveSVGToFile(svgString, uuid)
-            gpglData = self.convertSVG(uuid)
-            isPrinting = True
-            status = self.printGPGL(gpglData)
-            isPrinting = False
-            bytesToSend = struct.pack(">2i36c",1,0,*uuid)
-            self.sendingQueue.put(bytesToSend)
-            time.sleep(.5)
+        try:
+            while not self.shutdown.is_set():
+                try:
+                    [uuid, svgString] = self.printingQueue.get(True, .5)
+                except Queue.Empty:
+                    continue
+                self.saveSVGToFile(svgString, uuid)
+                gpglData = self.convertSVG(uuid)
+                isPrinting = True
+                status = self.printGPGL(gpglData)
+                isPrinting = False
+                bytesToSend = struct.pack(">2i36c",1,0,*uuid)
+                self.sendingQueue.put(bytesToSend)
+                time.sleep(.5)
+        except:
+            logging.exception("Error while printing")
+            self.shutdown.set()
 
 class ListenThread (threading.Thread):
     def __init__(self, btObj, printingQueue, shutdown):
@@ -112,11 +120,14 @@ class ListenThread (threading.Thread):
     def run(self):
         try:
             while not self.shutdown.is_set():
-                svgData = ''
+                lists = select.select([self.btObj.client_sock], [], [], .5)
+                if not lists[0]:
+                    continue
                 uuid = self.btObj.client_sock.recv(36)
                 if(len(uuid) == 0):
                     break
                 numBytes = struct.unpack(">I", self.btObj.client_sock.recv(4))[0]
+                svgData = ''
                 while(len(svgData) < numBytes):
                     svgData += self.btObj.client_sock.recv(numBytes - len(svgData))
 
@@ -124,13 +135,12 @@ class ListenThread (threading.Thread):
 
                 logging.info("Received SVG with uuid: %s, size %d", uuid, numBytes)
                 time.sleep(0.01)
-        except IOError:
-            pass
-
-        self.shutdown.set()
-        logging.info("Bluetooth disconnected")
-        self.btObj.client_sock.close()
-        self.btObj.server_sock.close()
+        except:
+            logging.exception("Bluetooth error")
+            self.shutdown.set()
+        finally:
+            self.btObj.client_sock.close()
+            self.btObj.server_sock.close()
 
 class SendThread(threading.Thread):
     def __init__(self, btObj, sendingQueue, shutdown):
@@ -143,12 +153,15 @@ class SendThread(threading.Thread):
     def run(self):
         try:
             while not self.shutdown.is_set():
-                toSend = self.sendingQueue.get()
+                try:
+                    toSend = self.sendingQueue.get(True, .5)
+                except Queue.Empty:
+                    continue
                 self.btObj.client_sock.send(toSend)
                 logging.debug("Sending %s", toSend)
-        except IOError:
+        except:
             logging.exception("Error while sending to bluetooth connection")
-        self.shutdown.set()
+            self.shutdown.set()
 
 class TrackingThread(threading.Thread):
     '''
@@ -206,14 +219,15 @@ class TrackingThread(threading.Thread):
         return [event1,event2]
 
     def run(self):
-        dev = usb.core.find(idVendor=0x1536, idProduct=0x101)
-        interface = 0
-        if dev.is_kernel_driver_active(interface) is True:
-            dev.detach_kernel_driver(interface)
-            usb.util.claim_interface(dev, interface)
-
-        count = 0
         try:
+            dev = usb.core.find(idVendor=0x1536, idProduct=0x101)
+            interface = 0
+            if dev.is_kernel_driver_active(interface) is True:
+                dev.detach_kernel_driver(interface)
+                usb.util.claim_interface(dev, interface)
+
+            count = 0
+
             while not self.shutdown.is_set():
                 if isPrinting:
                     time.sleep(1)
@@ -248,7 +262,7 @@ class TrackingThread(threading.Thread):
                     self.sendingQueue.put(bytesToSend)
                     logging.debug("Sending tracking info")
 
-        except usb.core.USBError:
+        except:
             logging.exception("USB error")
             self.shutdown.set()
         finally:
@@ -265,25 +279,29 @@ except:
     logging.exception('Cannot connect to plotter')
     sys.exit(1)
 
-printingQueue = Queue()
-sendingQueue = Queue()
+printingQueue = Queue.Queue()
+sendingQueue = Queue.Queue()
 shutdown = threading.Event()
 
 isPrinting = False
 
-appCommunication = BtCommunication(APP_UUID)
-
-threads = (ListenThread(appCommunication, shutdown),
-           SendThread(appCommunication, sendingQueue, shutdown),
-           TrackingThread(appCommunication, sendingQueue, shutdown),
-           PrintingThread(sendingQueue, printingQueue, shutdown))
 try:
+    appCommunication = BtCommunication(APP_UUID)
+
+    threads = (ListenThread(appCommunication, printingQueue, shutdown),
+               SendThread(appCommunication, sendingQueue, shutdown),
+               #TrackingThread(appCommunication, sendingQueue, shutdown),
+               PrintingThread(sendingQueue, printingQueue, shutdown))
     logging.info('starting threads')
 
     for t in threads:
         t.start()
 
-    shutdown.wait()
+    logging.info('threads started')
+
+    # Give python a chance to throw a KeyboardInterrupt
+    while True:
+        shutdown.wait(1)
 except KeyboardInterrupt:
     logging.info('Exiting due to ctrl-c')
 except:
