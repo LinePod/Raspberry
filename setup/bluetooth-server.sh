@@ -18,8 +18,8 @@ sed -i "s:\(ExecStart=.*\):\1 --compat\nExecStartPost=$(which sdptool) add SP:" 
 
 cd ../..
 
-# Create new systemd service for the bluetooth server
-cp setup/units/linespace.bluetooth-server.template.service /etc/systemd/system/linespace.bluetooth-server.service
-sed -i "s:__INSTALL_ROOT__:$(pwd):" /etc/systemd/system/linespace.bluetooth-server.service
+# Create new systemd service for the server
+cp setup/units/linespace.server.template.service /etc/systemd/system/linespace.server.service
+sed -i "s:__INSTALL_ROOT__:$(pwd):" /etc/systemd/system/linespace.server.service
 systemctl daemon-reload
-systemctl enable linespace.bluetooth-server
+systemctl enable linespace.server
