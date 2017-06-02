@@ -29,7 +29,7 @@ class MySilhouette (Silhouette):
     def write(self, command):
         if not TEST:
             logging.debug("Sending to Plotter: %s", repr(command))
-            super(mySilhouette, self).write(command)
+            super(MySilhouette, self).write(command)
         else:
             logging.debug("Would send to plotter: %s", repr(command))
 
@@ -46,7 +46,9 @@ class BtCommunication (object):
         logging.info("Accepted connection from %s", self.client_info)
 
     def config(self):
-        os.system("./establishConnection.sh")
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        subprocess.check_call(
+                [os.path.join(script_dir, 'establishConnection.sh')])
         self.server_sock.bind(("", PORT_ANY))
         self.server_sock.listen(1)
         self.port = self.server_sock.getsockname()[1]
@@ -166,8 +168,9 @@ class TrackingThread(threading.Thread):
     def __init__(self, btObj, sendingQueue, shutdown):
         super(TrackingThread, self).__init__(name='Tracking thread')
         self.daemon = True
-        self.btObj=btObj
+        self.btObj = btObj
         self.sendingQueue = sendingQueue
+        self.shutdown = shutdown
 
     def unclaimDevice(self, dev, interface):
         logging.info("Releasing airbar usb device")
