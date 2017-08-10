@@ -1,28 +1,38 @@
-# linespace_raspberry
+# LinePod raspberry
 
-## What this script does
-
-- Connecting to Android phones over bluetooth
-- Connecting to Silhouette Portrait over USB
-- Connecting to AirBar over USB
-- Receiving SVGs to be printed from bluetooth devices
-- Converting SVGs to GPGL commands
-- Sending GPGL commands to Silhouette Portrait
-- Receiving Tracking data from AirBar
-- Sending Tracking data to connected bluetooth device
+Software that runs on the Raspberry Pi inside the LinePod device.
+It:
+  * Accepts connections from apps via Bluetooth.
+  * Accepts print jobs from connected apps. The contained SVG image is then converted and printed using the Silhouette Portrait.
+  * Sends tracking data received from the AirBar to connected apps.
 
 ## Installation
 
-- run ./setup.sh with admin priviledges to setup program.
+Copy `setup.sh` from the root directory onto a fresh Raspbian Jessie system, and run it as the root user.
+The script will clone all necessary repositories (including this one) and install everything.
+
+For testing, a virtual machine running Debian Jessie can also be used.
+
+As part of the installation, the system will be updated from Debian Jessie to Debian Stretch.
+When official Raspbian images based on Debian Stretch become available, they can be used instead and the relevant code in `setup.sh` be deleted.
 
 ## Usage
 
-- Script will run automatically on startup
-- Do not kill with ```sudo killall python``` as the kernel driver for the usb devices need to be reattached. Otherwise, the airbar will not be usable anymore and the system needs to be restarted
+The setup script registers a systemd service named `linepod.server`, which runs all the necessary scripts.
+It is started automatically on startup.
+
+To interact with it, use the normal systemd commands, for example:
+  * `systemctl status linepod.server` to retrieve the status of the service,
+  * `systemctl [start|stop|restart] linepod.server` to start/stop the server, or
+  * `journalctl -u linepod.server` to read the log output.
+
+The main python script run by the service should never be killed (e.g. by `kill` or `killall`).
+Otherwise it can cause the AirBar to stop working until the system is restarted, because the kernel USB driver has not been reattached.
 
 ## Troubleshooting
 
-- The program logs to journalctl. If any problems occur, check the logs with journalctl.
-- Is the plotter connected and turned on?
-- Is the AirBar connected?
-- Is the RaspberryPI supplied with enough power?
+Common problems:
+  * Is the plotter connected and turned on?
+  * Is the AirBar connected and active (makes a beeping sound when a finger exits its tracking range)?
+  * Is the Raspberry Pi supplied with enough power, and only from one source?
+  * Is Bluetooth up and configured to receive connections (in the output of `hciconfig -a` the relevant device should have the statuses `UP`, `PSCAN` and `ISCAN`)?
