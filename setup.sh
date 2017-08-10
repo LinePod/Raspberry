@@ -2,7 +2,7 @@
 
 # This script is supposed to be run on a clean machine and will handle all
 # setup. It needs to be run with admin priviliges and will install everything
-# in a linespace folder in the home folder of the root user (commonly /root)
+# in a linepod folder in the home folder of the root user (commonly /root)
 
 # Check whether we are on a pi or in a virtual machine
 if [[ "$(uname -m)" == "arm*" ]]; then
@@ -28,10 +28,7 @@ git config --global --add 'url.git://github.com/.insteadOf' 'git@github.com:'
 git config --global --add 'url.git://github.com/.insteadOf' 'https://github.com/'
 git clone --recursive --depth=1 git://github.com/LinePod/Raspberry.git ~/linepod
 
-# Clone submodules of submodules
-git submodule update --init --recursive --depth=1
-
-cd ~/linespace
+cd ~/linepod
 setup/setup.sh
 
 # Reboot

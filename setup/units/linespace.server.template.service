@@ -1,9 +1,0 @@
-[Unit]
-Description=Linespace bluetooth server
-
-[Service]
-Restart=always
-ExecStart=__INSTALL_ROOT__/bluetooth-server/linespace.py
-
-[Install]
-WantedBy=multi-user.target

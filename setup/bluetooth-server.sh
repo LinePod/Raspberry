@@ -17,7 +17,7 @@ sed -i "s:\(ExecStart=.*\):\1 --compat\nExecStartPost=$(which sdptool) add SP:" 
 cd ../..
 
 # Create new systemd service for the server
-cp setup/units/linespace.server.template.service /etc/systemd/system/linespace.server.service
-sed -i "s:__INSTALL_ROOT__:$(pwd):" /etc/systemd/system/linespace.server.service
+cp setup/units/linepod.server.template.service /etc/systemd/system/linepod.server.service
+sed -i "s:__INSTALL_ROOT__:$(pwd):" /etc/systemd/system/linepod.server.service
 systemctl daemon-reload
-systemctl enable linespace.server
+systemctl enable linepod.server

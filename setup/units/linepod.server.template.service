@@ -1,0 +1,9 @@
+[Unit]
+Description=LinePod bluetooth server
+
+[Service]
+Restart=always
+ExecStart=__INSTALL_ROOT__/bluetooth-server/server.py
+
+[Install]
+WantedBy=multi-user.target
