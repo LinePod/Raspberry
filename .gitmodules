@@ -1,0 +1,6 @@
+[submodule "svg-converter"]
+	path = svg-converter
+	url = git@github.com:LinePod/SvgConverter.git
+[submodule "bluetooth-server/silhouette"]
+	path = bluetooth-server/silhouette
+	url = git@github.com:boeckhoff/silhouette.git

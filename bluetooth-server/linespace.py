@@ -96,7 +96,7 @@ class PrintingThread(threading.Thread):
 
     def convertSVG(self, uuid):
         svgPath = "svg/" + uuid + ".svg"
-        converter_path = os.path.expanduser('~/linespace/svg-simplifier/build/svg_converter')
+        converter_path = os.path.expanduser('~/linespace/svg-converter/build/svg_converter')
         out = subprocess.check_output([converter_path, svgPath])
         return out
 
