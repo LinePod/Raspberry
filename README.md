@@ -1,6 +1,7 @@
 # LinePod raspberry
 
-Software that runs on the Raspberry Pi inside the LinePod device.
+Software that runs on the Raspberry Pi inside the [linepod](https://hpi.de/baudisch/projects/linepod.html), a research sensemaking platform for blind users.
+
 It:
   * Accepts connections from apps via Bluetooth.
   * Accepts print jobs from connected apps. The contained SVG image is then converted and printed using the Silhouette Portrait.
